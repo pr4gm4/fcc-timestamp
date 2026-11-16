@@ -1,40 +1,84 @@
-// index.js
-// where your node app starts
-
-// init project
 require('dotenv').config();
-var express = require('express');
-var app = express();
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const app = express();
 
-// enable CORS (https://en.wikipedia.org/wiki/Cross-origin_resource_sharing)
-// so that your API is remotely testable by FCC
-var cors = require('cors');
-app.use(cors({ optionsSuccessStatus: 200 })); // some legacy browsers choke on 204
+// Basic Configuration
+const port = process.env.PORT || 3000;
 
-// http://expressjs.com/en/starter/static-files.html
-app.use(express.static('public'));
+app.use(cors());
 
-// http://expressjs.com/en/starter/basic-routing.html
+// parse both the HTML form (urlencoded) and JSON request bodies
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+
+app.use('/public', express.static(`${process.cwd()}/public`));
+
 app.get('/', function (req, res) {
-  res.sendFile(__dirname + '/views/index.html');
+  res.sendFile(process.cwd() + '/views/index.html');
 });
 
-// trust the reverse proxy (e.g. freeCodeCamp's) so req.ip reflects the client
-app.set('trust proxy', true);
-
-// Request Header Parser API
-// GET /api/whoami -> { ipaddress, language, software }
-app.get('/api/whoami', function (req, res) {
-  res.json({
-    // req.ip is the leftmost X-Forwarded-For entry thanks to `trust proxy`
-    ipaddress: req.ip || req.socket.remoteAddress || 'unknown',
-    // "*" is the HTTP default when the client expresses no language preference
-    language: req.headers['accept-language'] || '*',
-    software: req.headers['user-agent'] || 'unknown'
-  });
+// Your first API endpoint
+app.get('/api/hello', function (req, res) {
+  res.json({ greeting: 'hello API' });
 });
 
-// listen for requests :)
-var listener = app.listen(process.env.PORT || 3000, function () {
-  console.log('Your app is listening on port ' + listener.address().port);
+// In-memory store: short_url -> original URL, and the reverse to reuse ids
+const urls = new Map();
+const shortUrlByOriginalUrl = new Map();
+let nextShortUrl = 1;
+
+// A valid URL must be http(s)://host.tld/... as required by the project
+function isValidUrl(value) {
+  if (typeof value !== 'string') return false;
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch (err) {
+    return false;
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+
+  // reject hostnames without a domain, e.g. "http://localhost"
+  return parsed.hostname.includes('.');
+}
+
+// POST /api/shorturl -> { original_url, short_url } or { error: 'invalid url' }
+app.post('/api/shorturl', function (req, res) {
+  const originalUrl = req.body.url;
+
+  if (!isValidUrl(originalUrl)) {
+    return res.json({ error: 'invalid url' });
+  }
+
+  let shortUrl = shortUrlByOriginalUrl.get(originalUrl);
+  if (shortUrl === undefined) {
+    shortUrl = nextShortUrl++;
+    urls.set(shortUrl, originalUrl);
+    shortUrlByOriginalUrl.set(originalUrl, shortUrl);
+  }
+
+  res.json({ original_url: originalUrl, short_url: shortUrl });
+});
+
+// GET /api/shorturl/:short_url -> redirect to the original URL
+app.get('/api/shorturl/:short_url', function (req, res) {
+  const originalUrl = urls.get(Number(req.params.short_url));
+
+  if (!originalUrl) {
+    return res
+      .status(404)
+      .json({ error: 'No short URL found for the given input' });
+  }
+
+  res.redirect(originalUrl);
+});
+
+app.listen(port, function () {
+  console.log(`Listening on port ${port}`);
 });
