@@ -29,7 +29,9 @@ const urls = new Map();
 const shortUrlByOriginalUrl = new Map();
 let nextShortUrl = 1;
 
-// A valid URL must be http(s)://host.tld/... as required by the project
+// A valid URL must be http(s)://<host>/... as required by the project.
+// Hostnames without a dot (e.g. http://localhost:3000) are accepted on purpose:
+// fCC tests the project against its own URL, which may be localhost.
 function isValidUrl(value) {
   if (typeof value !== 'string') return false;
 
@@ -40,12 +42,10 @@ function isValidUrl(value) {
     return false;
   }
 
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return false;
-  }
-
-  // reject hostnames without a domain, e.g. "http://localhost"
-  return parsed.hostname.includes('.');
+  return (
+    (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+    parsed.hostname.length > 0
+  );
 }
 
 // POST /api/shorturl -> { original_url, short_url } or { error: 'invalid url' }
